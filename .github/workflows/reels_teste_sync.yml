@@ -1,0 +1,44 @@
+name: Sync Reels Teste
+
+on:
+  # Roda a cada 15 minutos
+  schedule:
+    - cron: "*/15 * * * *"
+  # Permite rodar manualmente pela UI do GitHub, com opção de DRY_RUN
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rodar em modo DRY_RUN (só loga, não escreve)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+# Evita duas execuções rodando ao mesmo tempo (protege contra duplicar tarefas)
+concurrency:
+  group: reels-teste-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        env:
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: python reels_teste_sync.py
