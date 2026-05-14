@@ -1,0 +1,28 @@
+name: Novo cliente — criar tarefas automáticas
+
+on:
+  schedule:
+    - cron: "0 9 * * *"  # Roda todo dia às 9h UTC (10h em Londres no verão)
+  workflow_dispatch:       # Permite rodar manualmente pelo GitHub
+
+jobs:
+  automation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências
+        run: pip install requests
+
+      - name: Executar automação
+        env:
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          CLICKUP_PLANEJAMENTO_LIST_ID: ${{ secrets.CLICKUP_PLANEJAMENTO_LIST_ID }}
+        run: python novo_cliente_criar_tarefas.py
