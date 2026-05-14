@@ -21,6 +21,7 @@ BASE      = "https://api.clickup.com/api/v2"
 LIST_GESTAO   = "901301376959"
 LIST_REUNIOES = "901305872401"
 LIST_PLAN     = os.environ.get("CLICKUP_PLANEJAMENTO_LIST_ID", "")
+LIST_PGM = "901305920069"
 
 FIELD_PLANO = "f815815a-7ea4-468c-b956-318bb999d492"
 FIELD_CICLO = "0ee5bf2a-f32d-4498-91f9-905aa2a0faf1"
@@ -35,6 +36,13 @@ MESES = {
     9:"Setembro", 10:"Outubro", 11:"Novembro", 12:"Dezembro"
 }
 QUARTER_END = {3:"1º", 6:"2º", 9:"3º", 12:"4º"}
+QUARTER_DATES = {
+    1: ("01/01", "31/03"),
+    2: ("01/04", "30/06"),
+    3: ("01/07", "30/09"),
+    4: ("01/10", "31/12"),
+}
+QUARTER_START_MONTH = {1: 1, 2: 4, 3: 7, 4: 10}
 TEAM_ID = "9013038195"
 
 
@@ -148,7 +156,8 @@ def resolve_cliente_orderindex(opts_dict, specialist_name):
 
 
 def process_specialist(task, today, year, plano_opts_by_value,
-                       fields_reu, fields_plan, existing_reu, existing_plan, task_types):
+                       fields_reu, fields_plan, fields_pgm,
+                       existing_reu, existing_plan, existing_pgm, task_types):
     nome  = task["name"]
     plano = resolve_plano(task, plano_opts_by_value)
 
@@ -168,6 +177,9 @@ def process_specialist(task, today, year, plano_opts_by_value,
     ciclo_opts_plan    = fields_plan.get("ciclo", {}).get("options", {}) if LIST_PLAN else {}
     cliente_field_plan = fields_plan.get("cliente", {}).get("id") if LIST_PLAN else None
     cliente_opts_plan  = fields_plan.get("cliente", {}).get("options", {}) if LIST_PLAN else {}
+
+    cliente_field_pgm  = fields_pgm.get("cliente", {}).get("id") if LIST_PGM else None
+    cliente_opts_pgm   = fields_pgm.get("cliente", {}).get("options", {}) if LIST_PGM else {}
 
     months   = list(range(today.month, 13))
     quarters = [q for q in QUARTER_END if q >= today.month]
@@ -230,6 +242,42 @@ def process_specialist(task, today, year, plano_opts_by_value,
             created += 1
             print(f"      ✓ {name}")
 
+    def new_pgm(name, quarter_num, year):
+        nonlocal created
+        if not LIST_PGM:
+            return
+        name = name.strip()
+        if name in existing_pgm:
+            return
+
+        start_str, end_str = QUARTER_DATES[quarter_num]
+        start_ms = to_ms(year, QUARTER_START_MONTH[quarter_num], 1)
+        end_month = [3, 6, 9, 12][quarter_num - 1]
+        end_day   = [31, 30, 30, 31][quarter_num - 1]
+        end_ms    = to_ms(year, end_month, end_day)
+
+        cfs = []
+        if cliente_field_pgm:
+            idx = resolve_cliente_orderindex(cliente_opts_pgm, nome)
+            if idx is not None:
+                cfs.append({"id": cliente_field_pgm, "value": idx})
+
+        payload = {
+            "name":        name,
+            "status":      "to do",
+            "custom_type": TYPE_PLANEJAMENTO,
+            "start_date":  start_ms,
+            "due_date":    end_ms,
+        }
+        if cfs:
+            payload["custom_fields"] = cfs
+
+        result = api_post(f"/list/{LIST_PGM}/task", payload)
+        if result:
+            existing_pgm.add(name)
+            created += 1
+            print(f"      ✓ {name}")
+
     if is_grs:
         for m in months:
             label = f"{MESES[m]}/{year}"
@@ -254,6 +302,15 @@ def process_specialist(task, today, year, plano_opts_by_value,
         new_plan(f"[Planejamento de Conteúdo] [{nome}] [{label}]",
                  month=m, due_ms=to_ms(y_due, m_due, 10))
 
+    # ── PGM (todos os planos) ─────────────────────────────────────────────────
+    quarters_pgm = [q for q in range(1, 5) if QUARTER_START_MONTH[q] + 2 >= today.month]
+    for q in quarters_pgm:
+        start_str, end_str = QUARTER_DATES[q]
+        ordinal = ["1trim", "2trim", "3trim", "4trim"][q - 1]
+        num = f"0{q}"
+        name_pgm = f"PGM #{num} [{year}] [{ordinal}] - [{nome}] [{start_str} à {end_str}]"
+        new_pgm(name_pgm, q, year)
+
     print(f"      → {created} tarefas criadas")
 
 
@@ -269,6 +326,7 @@ def main():
     specialists   = get_specialist_tasks()
     existing_reu  = {t["name"].strip() for t in get_all_tasks(LIST_REUNIOES)}
     existing_plan = {t["name"].strip() for t in (get_all_tasks(LIST_PLAN) if LIST_PLAN else [])}
+    existing_pgm = {t["name"].strip() for t in (get_all_tasks(LIST_PGM) if LIST_PGM else [])}
 
     print("Carregando campos...")
     # custom_item_id descobertos via diagnóstico:
@@ -282,6 +340,7 @@ def main():
     fields_gestao = build_field_index(LIST_GESTAO)
     fields_reu    = build_field_index(LIST_REUNIOES)
     fields_plan   = build_field_index(LIST_PLAN) if LIST_PLAN else {}
+    fields_pgm = build_field_index(LIST_PGM) if LIST_PGM else {}
 
     plano_opts_by_value = get_plano_options()
 
@@ -289,7 +348,8 @@ def main():
 
     for task in specialists:
         process_specialist(task, today, year, plano_opts_by_value,
-                           fields_reu, fields_plan, existing_reu, existing_plan, task_types)
+                           fields_reu, fields_plan, fields_pgm,
+                           existing_reu, existing_plan, existing_pgm, task_types)
 
     print("\n━━━ Concluído ━━━")
 
