@@ -40,7 +40,7 @@ TEAM_ID = "9013038195"
 
 def get_task_type_ids():
     """Busca IDs dos tipos de tarefa por nome."""
-    types = api_get(f"/team/{TEAM_ID}/taskType").get("data", [])
+    types = api_get(f"/team/{TEAM_ID}/task_type").get("data", [])
     result = {}
     for t in types:
         result[t.get("name", "").upper()] = t.get("id")
