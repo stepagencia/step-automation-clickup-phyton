@@ -62,28 +62,24 @@ def get_all_tasks(list_id):
     return all_tasks
 
 def diagnostico_tipos():
-    """Busca tarefa individual via GET /task/{id} pra ver TODOS os campos."""
-    tasks_reu = get_all_tasks(LIST_REUNIOES)
-    tasks_plan = get_all_tasks(LIST_PLAN) if LIST_PLAN else []
+    """Varre tarefas e mostra os custom_item_id distintos por lista,
+    com um exemplo de nome pra cada — permite descobrir os IDs numéricos
+    dos task types disponíveis."""
+    print("=== custom_item_id DISTINTOS POR LISTA ===")
 
-    print("=== TIPOS NAS TAREFAS CRIADAS (GET individual) ===")
-    for t in tasks_reu:
-        if "Teste automa" in t.get("name", ""):
-            full = api_get(f"/task/{t['id']}")
-            print(f"REUNIÃO: {full['name'][:50]}")
-            print(f"  custom_type={full.get('custom_type')}")
-            print(f"  custom_item_id={full.get('custom_item_id')}")
-            print(f"  task_type={full.get('task_type')}")
-            break
-
-    for t in tasks_plan:
-        if "Teste automa" in t.get("name", ""):
-            full = api_get(f"/task/{t['id']}")
-            print(f"PLAN: {full['name'][:50]}")
-            print(f"  custom_type={full.get('custom_type')}")
-            print(f"  custom_item_id={full.get('custom_item_id')}")
-            print(f"  task_type={full.get('task_type')}")
-            break
+    for label, list_id in [("REUNIÕES", LIST_REUNIOES),
+                            ("PLANEJAMENTO", LIST_PLAN)]:
+        if not list_id:
+            continue
+        print(f"\n--- Lista {label} ({list_id}) ---")
+        tasks = get_all_tasks(list_id)
+        ids_seen = {}  # custom_item_id -> primeiro nome encontrado
+        for t in tasks:
+            cid = t.get("custom_item_id")
+            if cid is not None and cid not in ids_seen:
+                ids_seen[cid] = t.get("name", "")[:60]
+        for cid, name in sorted(ids_seen.items(), key=lambda x: (x[0] is None, x[0])):
+            print(f"  custom_item_id={cid} → exemplo: '{name}'")
 
 
 def get_specialist_tasks():
