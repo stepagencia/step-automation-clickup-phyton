@@ -77,9 +77,14 @@ def build_field_index(list_id):
     for f in fields:
         opts = {}
         for i, o in enumerate(f.get("type_config", {}).get("options", [])):
+            # normaliza orderindex para int para evitar mismatch 6 vs 6.0
+            try:
+                oi = int(float(str(o.get("orderindex", i))))
+            except (ValueError, TypeError):
+                oi = i
             opts[o.get("name", "").upper()] = {
                 "id": o.get("id", ""),
-                "orderindex": o.get("orderindex", i)
+                "orderindex": oi
             }
         index[f["name"].lower()] = {"id": f["id"], "options": opts}
     return index
@@ -98,10 +103,12 @@ def resolve_plano(task, plano_opts_by_value):
     raw = get_cf_raw(task, FIELD_PLANO)
     if raw is None:
         return None
-    label = plano_opts_by_value.get(str(raw))
-    if not label:
-        # tenta converter int
-        label = plano_opts_by_value.get(str(int(float(str(raw)))))
+    # normaliza raw para int string: 6, 6.0, "6", "6.0" → "6"
+    try:
+        key = str(int(float(str(raw))))
+    except (ValueError, TypeError):
+        key = str(raw)
+    label = plano_opts_by_value.get(key)
     return label.upper() if label else None
 
 def resolve_ciclo_orderindex(opts_dict, month_num):
