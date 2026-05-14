@@ -325,6 +325,19 @@ def process_specialist(
 #  MAIN
 # ══════════════════════════════════════════════════════════════════
 
+def get_specialist_tasks():
+    list_tasks = get_all_tasks(LIST_GESTAO)
+    active = [
+        t for t in list_tasks
+        if t.get("status", {}).get("status", "").lower() in VALID_STATUSES
+    ]
+    full_tasks = []
+    for t in active:
+        full = api_get(f"/task/{t['id']}")
+        full_tasks.append(full)
+    return full_tasks
+
+
 def main():
     today = date.today()
     year  = today.year
@@ -333,48 +346,34 @@ def main():
     if not LIST_PLAN:
         print("⚠  CLICKUP_PLANEJAMENTO_LIST_ID não configurado → planejamentos serão pulados\n")
 
-    # ── Carrega tarefas existentes ────────────────────────────────────────────
     print("Carregando tarefas...")
-    specialists   = get_all_tasks(LIST_GESTAO)
+    specialists   = get_specialist_tasks()
     existing_reu  = {t["name"].strip() for t in get_all_tasks(LIST_REUNIOES)}
     existing_plan = {t["name"].strip() for t in (get_all_tasks(LIST_PLAN) if LIST_PLAN else [])}
 
-    # ── Carrega definições de campos ──────────────────────────────────────────
     print("Carregando campos...")
     fields_gestao = build_field_index(LIST_GESTAO)
     fields_reu    = build_field_index(LIST_REUNIOES)
     fields_plan   = build_field_index(LIST_PLAN) if LIST_PLAN else {}
 
-    # Monta lookup para o campo Plano: {str(orderindex): "NOME_UPPER"}
-    # ClickUp retorna o value como orderindex ao fazer GET de uma tarefa
     plano_field_data = fields_gestao.get("plano", {})
     plano_opts_by_value = {}
     for nome_opt, data in plano_field_data.get("options", {}).items():
-        plano_opts_by_value[str(data["orderindex"])] = nome_opt  # por orderindex
-        plano_opts_by_value[str(data["id"])]         = nome_opt  # por UUID (fallback)
+        plano_opts_by_value[str(data["orderindex"])] = nome_opt
+        plano_opts_by_value[str(data["id"])]         = nome_opt
 
-    # ── Filtra especialistas ativos ───────────────────────────────────────────
-    active = [
-        t for t in specialists
-        if t.get("status", {}).get("status", "").lower() in VALID_STATUSES
-    ]
     print(
-        f"{len(active)} especialistas ativos  |  "
+        f"{len(specialists)} especialistas ativos  |  "
         f"{len(existing_reu)} reuniões existentes  |  "
         f"{len(existing_plan)} planejamentos existentes\n"
     )
 
-    # ── Processa cada especialista ────────────────────────────────────────────
-    for task in active:
+    for task in specialists:
         process_specialist(
-            task,
-            today,
-            year,
+            task, today, year,
             plano_opts_by_value,
-            fields_reu,
-            fields_plan,
-            existing_reu,
-            existing_plan,
+            fields_reu, fields_plan,
+            existing_reu, existing_plan,
         )
 
     print("\n━━━ Concluído ━━━")
