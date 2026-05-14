@@ -38,29 +38,6 @@ QUARTER_END = {3:"1º", 6:"2º", 9:"3º", 12:"4º"}
 TEAM_ID = "9013038195"
 
 
-def get_task_type_ids():
-    """
-    Busca IDs dos tipos de tarefa a partir de tarefas existentes na lista Reuniões.
-    Mais confiável que o endpoint /taskType que não é acessível via API v2.
-    """
-    tasks = get_all_tasks(LIST_REUNIOES)
-    result = {}
-    for t in tasks:
-        tipo_nome = (t.get("custom_type") or "").upper()
-        tipo_id   = t.get("custom_type")
-        if tipo_nome and tipo_id and tipo_nome not in result:
-            result[tipo_nome] = tipo_id
-        # tenta também o campo task_type
-        tt = t.get("task_type") or {}
-        if isinstance(tt, dict):
-            nome = tt.get("name", "").upper()
-            tid  = tt.get("id")
-            if nome and tid:
-                result[nome] = tid
-    print(f"Tipos encontrados: {result}")
-    return result
-
-
 def api_get(path, params=None):
     r = requests.get(f"{BASE}{path}", headers=HEADERS, params=params or {})
     r.raise_for_status()
@@ -196,9 +173,9 @@ def process_specialist(task, today, year, plano_opts_by_value,
     quarters = [q for q in QUARTER_END if q >= today.month]
     is_grs   = "GRS" in plano
     is_dir   = "DIRE" in plano
-    TYPE_REUNIAO      = task_types.get("REUNIÃO")
-    TYPE_PLANEJAMENTO = task_types.get("PLANEJAMENTO")
-    TYPE_GRAVACAO     = task_types.get("GRAVAÇÃO")
+    TYPE_REUNIAO      = task_types["REUNIÃO"]
+    TYPE_PLANEJAMENTO = task_types["PLANEJAMENTO"]
+    TYPE_GRAVACAO     = task_types["GRAVAÇÃO"]
     created  = 0
 
     def new_reuniao(name, month=None, due_ms=None, task_type_override=None):
@@ -216,9 +193,7 @@ def process_specialist(task, today, year, plano_opts_by_value,
             if idx is not None:
                 cfs.append({"id": cliente_field_reu, "value": idx})
         payload = {"name": name, "status": STATUS_REUNIOES}
-        tipo = task_type_override if task_type_override else TYPE_REUNIAO
-        if tipo:
-            payload["task_type"] = tipo
+        payload["custom_type"] = task_type_override if task_type_override else TYPE_REUNIAO
         if cfs:
             payload["custom_fields"] = cfs
         if due_ms:
@@ -246,8 +221,7 @@ def process_specialist(task, today, year, plano_opts_by_value,
             if idx is not None:
                 cfs.append({"id": cliente_field_plan, "value": idx})
         payload = {"name": name, "status": STATUS_PLAN, "due_date": due_ms}
-        if TYPE_PLANEJAMENTO:
-            payload["task_type"] = TYPE_PLANEJAMENTO
+        payload["custom_type"] = TYPE_PLANEJAMENTO
         if cfs:
             payload["custom_fields"] = cfs
         result = api_post(f"/list/{LIST_PLAN}/task", payload)
@@ -297,10 +271,11 @@ def main():
     existing_plan = {t["name"].strip() for t in (get_all_tasks(LIST_PLAN) if LIST_PLAN else [])}
 
     print("Carregando campos...")
-    task_types = get_task_type_ids()
-    TYPE_REUNIAO     = task_types.get("REUNIÃO")
-    TYPE_PLANEJAMENTO = task_types.get("PLANEJAMENTO")
-    TYPE_GRAVACAO    = task_types.get("GRAVAÇÃO")
+    task_types = {
+        "REUNIÃO":      "Reunião",
+        "PLANEJAMENTO": "Planejamento",
+        "GRAVAÇÃO":     "Gravação",
+    }
     fields_gestao = build_field_index(LIST_GESTAO)
     fields_reu    = build_field_index(LIST_REUNIOES)
     fields_plan   = build_field_index(LIST_PLAN) if LIST_PLAN else {}
