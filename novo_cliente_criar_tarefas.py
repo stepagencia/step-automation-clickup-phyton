@@ -39,12 +39,25 @@ TEAM_ID = "9013038195"
 
 
 def get_task_type_ids():
-    """Busca IDs dos tipos de tarefa por nome."""
-    types = api_get(f"/team/{TEAM_ID}/task_type").get("data", [])
+    """
+    Busca IDs dos tipos de tarefa a partir de tarefas existentes na lista Reuniões.
+    Mais confiável que o endpoint /taskType que não é acessível via API v2.
+    """
+    tasks = get_all_tasks(LIST_REUNIOES)
     result = {}
-    for t in types:
-        result[t.get("name", "").upper()] = t.get("id")
-    print(f"Tipos carregados: {list(result.keys())}")
+    for t in tasks:
+        tipo_nome = (t.get("custom_type") or "").upper()
+        tipo_id   = t.get("custom_type")
+        if tipo_nome and tipo_id and tipo_nome not in result:
+            result[tipo_nome] = tipo_id
+        # tenta também o campo task_type
+        tt = t.get("task_type") or {}
+        if isinstance(tt, dict):
+            nome = tt.get("name", "").upper()
+            tid  = tt.get("id")
+            if nome and tid:
+                result[nome] = tid
+    print(f"Tipos encontrados: {result}")
     return result
 
 
