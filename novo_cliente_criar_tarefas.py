@@ -61,6 +61,26 @@ def get_all_tasks(list_id):
         page += 1
     return all_tasks
 
+def diagnostico_tipos():
+    """Busca os IDs reais dos task types a partir das tarefas recém-criadas."""
+    # Busca tarefas do Teste automação em Reuniões
+    tasks_reu = get_all_tasks(LIST_REUNIOES)
+    tasks_plan = get_all_tasks(LIST_PLAN) if LIST_PLAN else []
+
+    print("=== TIPOS NAS TAREFAS CRIADAS ===")
+    for t in tasks_reu:
+        if "Teste automação" in t.get("name", "") or "Teste automa" in t.get("name", ""):
+            ct = t.get("custom_type")
+            print(f"REUNIÃO: {t['name'][:50]} | custom_type={ct}")
+            break
+
+    for t in tasks_plan:
+        if "Teste automação" in t.get("name", "") or "Teste automa" in t.get("name", ""):
+            ct = t.get("custom_type")
+            print(f"PLAN: {t['name'][:50]} | custom_type={ct}")
+            break
+
+
 def get_specialist_tasks():
     """Busca especialistas ativos individualmente para garantir custom fields completos."""
     list_tasks = get_all_tasks(LIST_GESTAO)
@@ -266,6 +286,7 @@ def main():
         print("⚠  CLICKUP_PLANEJAMENTO_LIST_ID não configurado\n")
 
     print("Carregando tarefas...")
+    diagnostico_tipos()
     specialists   = get_specialist_tasks()
     existing_reu  = {t["name"].strip() for t in get_all_tasks(LIST_REUNIOES)}
     existing_plan = {t["name"].strip() for t in (get_all_tasks(LIST_PLAN) if LIST_PLAN else [])}
