@@ -99,6 +99,26 @@ def to_ms(year, month, day):
     return int(datetime.combine(date(year, month, day),
                                 datetime.min.time()).timestamp() * 1000)
 
+def get_plano_options():
+    """Busca as opções do campo Plano diretamente pelo ID do campo."""
+    fields = api_get(f"/list/{LIST_GESTAO}/field").get("fields", [])
+    for f in fields:
+        if f["id"] == FIELD_PLANO:
+            result = {}
+            for o in f.get("type_config", {}).get("options", []):
+                try:
+                    oi = str(int(float(str(o.get("orderindex", 0)))))
+                except Exception:
+                    oi = str(o.get("orderindex", 0))
+                nome = o.get("name", "").upper()
+                result[oi] = nome
+                result[str(o.get("id", ""))] = nome
+            print(f"Plano options carregadas: {list(result.items())[:8]}")
+            return result
+    print("AVISO: campo Plano não encontrado")
+    return {}
+
+
 def resolve_plano(task, plano_opts_by_value):
     raw = get_cf_raw(task, FIELD_PLANO)
     if raw is None:
@@ -249,10 +269,7 @@ def main():
     fields_reu    = build_field_index(LIST_REUNIOES)
     fields_plan   = build_field_index(LIST_PLAN) if LIST_PLAN else {}
 
-    plano_opts_by_value = {}
-    for nome_opt, data in fields_gestao.get("plano", {}).get("options", {}).items():
-        plano_opts_by_value[str(data["orderindex"])] = nome_opt
-        plano_opts_by_value[str(data["id"])]         = nome_opt
+    plano_opts_by_value = get_plano_options()
 
     print(f"{len(specialists)} especialistas  |  {len(existing_reu)} reuniões  |  {len(existing_plan)} planejamentos\n")
 
