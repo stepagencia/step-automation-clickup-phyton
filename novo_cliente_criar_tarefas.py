@@ -339,28 +339,44 @@ def get_specialist_tasks():
 
 
 def main():
-    print("=== DIAGNÓSTICO ===")
+    today = date.today()
+    year  = today.year
+    print(f"━━━ Automação Step [{today}] ━━━\n")
 
-    # Pega o primeiro especialista ativo
-    tasks = get_all_tasks(LIST_GESTAO)
-    active = [t for t in tasks if t.get("status", {}).get("status", "").lower() in VALID_STATUSES]
-    if not active:
-        print("Nenhum especialista ativo")
-        return
+    if not LIST_PLAN:
+        print("⚠  CLICKUP_PLANEJAMENTO_LIST_ID não configurado → planejamentos serão pulados\n")
 
-    # Busca a tarefa completa individualmente
-    task = api_get(f"/task/{active[0]['id']}")
-    print(f"Especialista: {task['name']}")
-    print(f"\nCustom fields da tarefa:")
-    for cf in task.get("custom_fields", []):
-        print(f"  nome={cf.get('name')} | id={cf.get('id')} | value={cf.get('value')}")
+    print("Carregando tarefas...")
+    specialists   = get_specialist_tasks()
+    existing_reu  = {t["name"].strip() for t in get_all_tasks(LIST_REUNIOES)}
+    existing_plan = {t["name"].strip() for t in (get_all_tasks(LIST_PLAN) if LIST_PLAN else [])}
 
-    print(f"\nCampos da lista (build_field_index):")
-    fields = build_field_index(LIST_GESTAO)
-    for nome, data in fields.items():
-        print(f"  nome_lower={nome} | id={data['id']}")
-        for opt_name, opt_data in data.get("options", {}).items():
-            print(f"    opcao: {opt_name} | orderindex={opt_data['orderindex']} | id={opt_data['id']}")
+    print("Carregando campos...")
+    fields_gestao = build_field_index(LIST_GESTAO)
+    fields_reu    = build_field_index(LIST_REUNIOES)
+    fields_plan   = build_field_index(LIST_PLAN) if LIST_PLAN else {}
+
+    plano_field_data = fields_gestao.get("plano", {})
+    plano_opts_by_value = {}
+    for nome_opt, data in plano_field_data.get("options", {}).items():
+        plano_opts_by_value[str(data["orderindex"])] = nome_opt
+        plano_opts_by_value[str(data["id"])]         = nome_opt
+
+    print(
+        f"{len(specialists)} especialistas ativos  |  "
+        f"{len(existing_reu)} reuniões existentes  |  "
+        f"{len(existing_plan)} planejamentos existentes\n"
+    )
+
+    for task in specialists:
+        process_specialist(
+            task, today, year,
+            plano_opts_by_value,
+            fields_reu, fields_plan,
+            existing_reu, existing_plan,
+        )
+
+    print("\n━━━ Concluído ━━━")
 
 if __name__ == "__main__":
     main()
