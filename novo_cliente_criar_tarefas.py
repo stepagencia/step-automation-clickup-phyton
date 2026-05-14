@@ -61,27 +61,6 @@ def get_all_tasks(list_id):
         page += 1
     return all_tasks
 
-def diagnostico_tipos():
-    """Varre tarefas e mostra os custom_item_id distintos por lista,
-    com um exemplo de nome pra cada — permite descobrir os IDs numéricos
-    dos task types disponíveis."""
-    print("=== custom_item_id DISTINTOS POR LISTA ===")
-
-    for label, list_id in [("REUNIÕES", LIST_REUNIOES),
-                            ("PLANEJAMENTO", LIST_PLAN)]:
-        if not list_id:
-            continue
-        print(f"\n--- Lista {label} ({list_id}) ---")
-        tasks = get_all_tasks(list_id)
-        ids_seen = {}  # custom_item_id -> primeiro nome encontrado
-        for t in tasks:
-            cid = t.get("custom_item_id")
-            if cid is not None and cid not in ids_seen:
-                ids_seen[cid] = t.get("name", "")[:60]
-        for cid, name in sorted(ids_seen.items(), key=lambda x: (x[0] is None, x[0])):
-            print(f"  custom_item_id={cid} → exemplo: '{name}'")
-
-
 def get_specialist_tasks():
     """Busca especialistas ativos individualmente para garantir custom fields completos."""
     list_tasks = get_all_tasks(LIST_GESTAO)
@@ -214,7 +193,7 @@ def process_specialist(task, today, year, plano_opts_by_value,
             if idx is not None:
                 cfs.append({"id": cliente_field_reu, "value": idx})
         payload = {"name": name, "status": STATUS_REUNIOES}
-        payload["custom_type"] = task_type_override if task_type_override else TYPE_REUNIAO
+        payload["custom_item_id"] = task_type_override if task_type_override else TYPE_REUNIAO
         if cfs:
             payload["custom_fields"] = cfs
         if due_ms:
@@ -242,7 +221,7 @@ def process_specialist(task, today, year, plano_opts_by_value,
             if idx is not None:
                 cfs.append({"id": cliente_field_plan, "value": idx})
         payload = {"name": name, "status": STATUS_PLAN, "due_date": due_ms}
-        payload["custom_type"] = TYPE_PLANEJAMENTO
+        payload["custom_item_id"] = TYPE_PLANEJAMENTO
         if cfs:
             payload["custom_fields"] = cfs
         result = api_post(f"/list/{LIST_PLAN}/task", payload)
@@ -287,16 +266,18 @@ def main():
         print("⚠  CLICKUP_PLANEJAMENTO_LIST_ID não configurado\n")
 
     print("Carregando tarefas...")
-    diagnostico_tipos()
     specialists   = get_specialist_tasks()
     existing_reu  = {t["name"].strip() for t in get_all_tasks(LIST_REUNIOES)}
     existing_plan = {t["name"].strip() for t in (get_all_tasks(LIST_PLAN) if LIST_PLAN else [])}
 
     print("Carregando campos...")
+    # custom_item_id descobertos via diagnóstico:
+    # 1005=Reunião, 1020=Gravação, 1002=Planejamento.
+    # O ClickUp espera o ID NUMÉRICO nesse campo, não o nome.
     task_types = {
-        "REUNIÃO":      "Reunião",
-        "PLANEJAMENTO": "Planejamento",
-        "GRAVAÇÃO":     "Gravação",
+        "REUNIÃO":      1005,
+        "PLANEJAMENTO": 1002,
+        "GRAVAÇÃO":     1020,
     }
     fields_gestao = build_field_index(LIST_GESTAO)
     fields_reu    = build_field_index(LIST_REUNIOES)
