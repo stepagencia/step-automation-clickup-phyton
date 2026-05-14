@@ -62,22 +62,27 @@ def get_all_tasks(list_id):
     return all_tasks
 
 def diagnostico_tipos():
-    """Busca os IDs reais dos task types a partir das tarefas recém-criadas."""
-    # Busca tarefas do Teste automação em Reuniões
+    """Busca tarefa individual via GET /task/{id} pra ver TODOS os campos."""
     tasks_reu = get_all_tasks(LIST_REUNIOES)
     tasks_plan = get_all_tasks(LIST_PLAN) if LIST_PLAN else []
 
-    print("=== TIPOS NAS TAREFAS CRIADAS ===")
+    print("=== TIPOS NAS TAREFAS CRIADAS (GET individual) ===")
     for t in tasks_reu:
-        if "Teste automação" in t.get("name", "") or "Teste automa" in t.get("name", ""):
-            ct = t.get("custom_type")
-            print(f"REUNIÃO: {t['name'][:50]} | custom_type={ct}")
+        if "Teste automa" in t.get("name", ""):
+            full = api_get(f"/task/{t['id']}")
+            print(f"REUNIÃO: {full['name'][:50]}")
+            print(f"  custom_type={full.get('custom_type')}")
+            print(f"  custom_item_id={full.get('custom_item_id')}")
+            print(f"  task_type={full.get('task_type')}")
             break
 
     for t in tasks_plan:
-        if "Teste automação" in t.get("name", "") or "Teste automa" in t.get("name", ""):
-            ct = t.get("custom_type")
-            print(f"PLAN: {t['name'][:50]} | custom_type={ct}")
+        if "Teste automa" in t.get("name", ""):
+            full = api_get(f"/task/{t['id']}")
+            print(f"PLAN: {full['name'][:50]}")
+            print(f"  custom_type={full.get('custom_type')}")
+            print(f"  custom_item_id={full.get('custom_item_id')}")
+            print(f"  task_type={full.get('task_type')}")
             break
 
 
