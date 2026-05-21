@@ -58,12 +58,13 @@ LIST_AGENDAMENTOS = "901306281642"
 TAG_REELS_TESTE = "reels teste"
 TAG_REELS_TESTE_PROCESSADO = "reels teste processado"
 
-# Custom field IDs (globais do workspace) — os 5 que devem ser copiados
+# Custom field IDs (globais do workspace) — os campos que devem ser copiados
 CF_CLIENTE = "e41a916f-7818-44b6-9e93-fb003f52ad53"
 CF_EDITORIAS = "7a155e2e-5b70-467c-894f-98f7f4cc1722"
 CF_LINK_POST = "3ee94567-b2f1-4819-91f9-726fcb4378c0"
 CF_TIPO = "4fc73c67-8c6e-4e73-ad8e-885df6586260"
 CF_REDE_SOCIAL = "5293fb4f-2741-4aab-bb1c-518e9e1d2030"
+CF_LEGENDA = "322837ee-3eba-41a8-8a5e-82b61fa15366"
 
 COPIABLE_FIELDS = [
     CF_CLIENTE,
@@ -71,10 +72,17 @@ COPIABLE_FIELDS = [
     CF_LINK_POST,
     CF_TIPO,
     CF_REDE_SOCIAL,
+    CF_LEGENDA,
 ]
 
 # Dropdowns precisam ser setados via UUID da opção, não pelo orderindex bruto
 DROPDOWN_FIELDS = {CF_CLIENTE, CF_EDITORIAS, CF_TIPO, CF_REDE_SOCIAL}
+
+# Campos URL: rede de segurança — algumas integrações do ClickUp aceitam
+# melhor o valor envelopado em {"value": "..."}, embora a observação atual
+# seja que strings cruas funcionam. Tratamos via fluxo dedicado pra cobrir
+# eventual falha intermitente.
+URL_FIELDS = {CF_LINK_POST}
 
 # Status da nova tarefa — ClickUp aceita o nome em minúsculo no payload
 NEW_TASK_STATUS = "agendar postagem"
@@ -189,6 +197,11 @@ class ClickUp:
                   json={"comment_text": text, "notify_all": notify_all},
                   write=True)
 
+    def link_tasks(self, task_id: str, links_to: str) -> None:
+        """Cria link bidirecional entre duas tarefas (relação lateral,
+        não parent/child). Endpoint: POST /task/{id}/link/{outro_id}."""
+        self._req("POST", f"/task/{task_id}/link/{links_to}", write=True)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -226,7 +239,7 @@ def tag_names(task: dict) -> set[str]:
 
 
 def apply_custom_fields(cu: ClickUp, task_id: str, source: dict) -> None:
-    """Copia os 5 campos da tarefa original para a nova, um por um."""
+    """Copia os campos da tarefa original para a nova, um por um."""
     for field_id in COPIABLE_FIELDS:
         raw = cf_value(source, field_id)
         if raw is None or raw == "":
@@ -236,6 +249,24 @@ def apply_custom_fields(cu: ClickUp, task_id: str, source: dict) -> None:
                 opt_id = dropdown_option_id(source, field_id)
                 if opt_id:
                     cu.set_custom_field(task_id, field_id, opt_id)
+            elif field_id in URL_FIELDS:
+                # Rede de segurança para campos URL: 2 tentativas com backoff.
+                # Cobre falhas intermitentes da API observadas em execução
+                # (mesma rodada do cron criou 5 cópias com Link e 3 sem).
+                last_exc = None
+                for attempt in range(2):
+                    try:
+                        cu.set_custom_field(task_id, field_id, raw)
+                        last_exc = None
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        last_exc = exc
+                        if attempt == 0:
+                            log.warning("    URL %s falhou (tentativa 1), "
+                                        "tentando de novo: %s", field_id, exc)
+                            time.sleep(1)
+                if last_exc:
+                    raise last_exc
             else:
                 cu.set_custom_field(task_id, field_id, raw)
         except Exception as exc:  # noqa: BLE001
@@ -310,9 +341,22 @@ def create_reels_teste_copy(cu: ClickUp, orig: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         log.warning("Falha ao adicionar comentário em %s: %s", new_id, exc)
 
+    # --- Vincula original ↔ cópia (link bidirecional do ClickUp) ---
+    # Se a vinculação falhar, NÃO marcamos a original como processada.
+    # Assim a próxima execução do cron pode tentar de novo. Mesma defesa
+    # usada para falha de create_task.
+    try:
+        cu.link_tasks(orig_id, new_id)
+        log.info("  Original %s vinculada à cópia %s", orig_id, new_id)
+    except Exception as exc:  # noqa: BLE001
+        log.error("FALHA ao vincular original %s à cópia %s: %s. "
+                  "Original NÃO marcada como processada — rode de novo após "
+                  "corrigir.", orig_id, new_id, exc)
+        return
+
     # --- Marca a ORIGINAL como processada (anti-loop) ---
-    # Só chega aqui se a criação deu certo. Tag 'reels teste' original é
-    # mantida (histórico).
+    # Só chega aqui se a criação + link deram certo. Tag 'reels teste'
+    # original é mantida (histórico).
     try:
         cu.add_tag(orig_id, TAG_REELS_TESTE_PROCESSADO)
         log.info("  Original %s marcada como 'reels teste processado'",
