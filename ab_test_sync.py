@@ -170,6 +170,17 @@ class ClickUp:
                 log.warning("Rate limit, aguardando %ss", wait)
                 time.sleep(wait)
                 continue
+            # Retry em 5xx APENAS para leituras (writes não retentam pra
+            # evitar duplicação caso o ClickUp tenha processado mas
+            # respondido erro). ECODE ITEM_413 e 500 transient do ClickUp
+            # já causaram falhas em produção.
+            if 500 <= resp.status_code < 600 and not write and attempt < 2:
+                wait = 2 ** attempt
+                log.warning("ClickUp %s %s -> %s (5xx transient), "
+                            "tentando de novo em %ss",
+                            method, path, resp.status_code, wait)
+                time.sleep(wait)
+                continue
             if resp.status_code >= 400:
                 log.error("ClickUp %s %s -> %s: %s",
                           method, path, resp.status_code, resp.text[:500])
