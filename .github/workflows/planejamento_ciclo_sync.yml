@@ -1,0 +1,46 @@
+name: Planejamento Ciclo Sync — máquina de estados das tarefas-ciclo
+
+on:
+  schedule:
+    - cron: "0 11 * * *"   # 11h UTC = 8h São Paulo (horário-padrão)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rodar em modo DRY_RUN (só loga, não escreve)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      today_override:
+        description: "Sobrescrever data de hoje (YYYY-MM-DD) — só para teste"
+        required: false
+        default: ""
+
+concurrency:
+  group: planejamento-ciclo-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run sync
+        env:
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          TODAY_OVERRIDE: ${{ github.event.inputs.today_override || '' }}
+        run: python planejamento_ciclo_sync.py
