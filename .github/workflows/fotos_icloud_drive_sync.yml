@@ -1,0 +1,73 @@
+name: Fotos iCloud → Drive (diário)
+
+on:
+  # CRON PRONTO, MAS AINDA DESATIVADO.
+  # Para ativar o agendamento diário, basta DESCOMENTAR as 2 linhas abaixo.
+  # "0 11 * * *" = 11h UTC = 8h em São Paulo (mesmo padrão dos outros workflows).
+  # schedule:
+  #   - cron: "0 11 * * *"
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "BASELINE (registra os GUIDs sem baixar nada)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      dry_run:
+        description: "DRY_RUN (só loga, não escreve em Drive/Sheets/estado)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+# Evita duas execuções ao mesmo tempo (protege o arquivo de estado).
+concurrency:
+  group: fotos-icloud-drive-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # necessário para commitar o estado de volta no repo
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests google-auth Pillow
+
+      - name: Run sync
+        env:
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          DRIVE_AUTOMACAO_FOLDER_ID: ${{ secrets.DRIVE_AUTOMACAO_FOLDER_ID }}
+          GOOGLE_IMPERSONATE_SUBJECT: ${{ secrets.GOOGLE_IMPERSONATE_SUBJECT }}
+          BASELINE: ${{ github.event.inputs.baseline || 'false' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: python fotos_icloud_drive_sync.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/fotos-processadas.json
+          if git diff --cached --quiet; then
+            echo "Sem mudança no estado."
+          else
+            git commit -m "chore: atualiza estado de fotos processadas [skip ci]"
+            git push
+          fi

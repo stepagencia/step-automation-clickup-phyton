@@ -1,0 +1,8 @@
+# Segredos locais — NUNCA versionar
+segredos.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
