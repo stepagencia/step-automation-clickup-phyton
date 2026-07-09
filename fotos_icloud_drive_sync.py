@@ -117,6 +117,7 @@ CATEGORIAS: dict[str, dict[str, Any]] = {
     "detalhes":          {"slug": "detalhes",     "path": ["detalhes"]},
     "eventos":           {"slug": "eventos",      "path": ["eventos"]},
     "trabalho":          {"slug": "trabalho",     "path": ["trabalho"]},
+    "antigas":           {"slug": "antigas",      "path": ["antigas"]},
     "a-classificar":     {"slug": "a-classificar", "path": ["a-classificar"]},
 }
 CATEGORIA_FALLBACK = "a-classificar"
@@ -125,7 +126,13 @@ CLASSIFY_PROMPT = (
     "Você classifica UMA foto do álbum pessoal de uma cliente (mulher). "
     "Responda APENAS com um JSON no formato {\"categoria\": \"...\"}, sem texto extra.\n\n"
     "Escolha exatamente UMA categoria seguindo esta lógica:\n\n"
-    "EXCEÇÕES (têm prioridade sobre tudo):\n"
+    "REGRA PRIORITÁRIA (vem ANTES de tudo, inclusive das exceções abaixo):\n"
+    "- Foto claramente de OUTRA ÉPOCA: escaneada de álbum físico, com "
+    "grão/qualidade de câmera antiga, moda e cabelo datados, ou a cliente "
+    "visivelmente MUITO mais jovem -> \"antigas\". Isso vale MESMO que "
+    "apareça família, evento ou cenário de trabalho na foto antiga "
+    "(\"antigas\" ganha de todas as outras categorias).\n\n"
+    "EXCEÇÕES (têm prioridade sobre os passos A e B):\n"
     "- Palco, palestra, congresso, evento com plateia -> \"eventos\".\n"
     "- Consultório, bastidor de gravação, setup de trabalho, cenário "
     "profissional -> \"trabalho\".\n\n"
@@ -138,8 +145,8 @@ CLASSIFY_PROMPT = (
     "- Cotidiano/lifestyle (café, viagem, academia, hobby, rua) -> "
     "\"sozinha/lifestyle\".\n\n"
     "Se ficar em dúvida entre categorias, responda \"a-classificar\".\n"
-    "Categorias válidas: sozinha, sozinha/lifestyle, familia, detalhes, "
-    "eventos, trabalho, a-classificar."
+    "Categorias válidas: antigas, sozinha, sozinha/lifestyle, familia, "
+    "detalhes, eventos, trabalho, a-classificar."
 )
 
 log = logging.getLogger("fotos_icloud_drive_sync")
@@ -523,6 +530,20 @@ class Google:
             cur = self.ensure_folder(cur, seg)
         return cur
 
+    def ensure_antigas(self, parent_id: str) -> str:
+        """Pasta de fotos antigas do cliente. Reaproveita qualquer subpasta
+        já existente cujo nome contenha 'antig' (ex.: 'Antigas',
+        'Fotos antigas'), sem criar duplicada. Se não houver, cria 'antigas'."""
+        data = self._drive_get({
+            "q": f"'{parent_id}' in parents and trashed = false "
+                 f"and mimeType = '{FOLDER_MIME}'",
+            "fields": "files(id,name)", "corpora": "allDrives", "pageSize": 100,
+        })
+        for f in data.get("files", []):
+            if "antig" in f.get("name", "").lower():
+                return f["id"]
+        return self.ensure_folder(parent_id, "antigas")
+
     def count_prefix(self, folder_id: str, prefix: str) -> int:
         safe = prefix.replace("'", "\\'")
         data = self._drive_get({
@@ -739,7 +760,10 @@ def process_client(task: dict, state: dict, google_holder: dict,
             chave = "/".join(info["path"])
             sub_id = subpasta_cache.get(chave)
             if sub_id is None:
-                sub_id = google.ensure_path(folder_id, info["path"])
+                if categoria == "antigas":
+                    sub_id = google.ensure_antigas(folder_id)
+                else:
+                    sub_id = google.ensure_path(folder_id, info["path"])
                 subpasta_cache[chave] = sub_id
 
             # numeração NN sequencial por data+categoria
