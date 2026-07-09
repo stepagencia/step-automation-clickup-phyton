@@ -1,11 +1,9 @@
 name: Fotos iCloud → Drive (diário)
 
 on:
-  # CRON PRONTO, MAS AINDA DESATIVADO.
-  # Para ativar o agendamento diário, basta DESCOMENTAR as 2 linhas abaixo.
-  # "0 11 * * *" = 11h UTC = 8h em São Paulo (mesmo padrão dos outros workflows).
-  # schedule:
-  #   - cron: "0 11 * * *"
+  # CRON ATIVO: roda todo dia às 11h UTC = 8h em São Paulo (mesmo padrão dos outros workflows).
+  schedule:
+    - cron: "0 11 * * *"
   workflow_dispatch:
     inputs:
       baseline:
