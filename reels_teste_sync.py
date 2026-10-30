@@ -43,7 +43,9 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -65,6 +67,7 @@ CF_LINK_POST = "3ee94567-b2f1-4819-91f9-726fcb4378c0"
 CF_TIPO = "4fc73c67-8c6e-4e73-ad8e-885df6586260"
 CF_REDE_SOCIAL = "5293fb4f-2741-4aab-bb1c-518e9e1d2030"
 CF_LEGENDA = "322837ee-3eba-41a8-8a5e-82b61fa15366"
+CF_DATA_POSTAGEM = "4ccefbf6-8e46-48af-8f94-1f3eeb8770f6"
 
 COPIABLE_FIELDS = [
     CF_CLIENTE,
@@ -97,6 +100,23 @@ COMMENT_TEXT = (
 # Janela de busca — só olha tarefas atualizadas nos últimos N meses
 LOOKBACK_MONTHS = 6
 LOOKBACK_MS = LOOKBACK_MONTHS * 30 * 24 * 60 * 60 * 1000  # aproximado
+
+# Fuso usado para calcular "hoje" na data de postagem (evita drift noturno
+# causado pelo cron rodar em UTC).
+TZ_SP = ZoneInfo("America/Sao_Paulo")
+
+# Dias de antecedência da data de postagem em relação a hoje.
+# Preenchido automaticamente para a Nathalia não precisar mais editar manual.
+DIAS_ANTES_POSTAGEM = 3
+
+
+def data_postagem_ms() -> int:
+    """Data de postagem = hoje (America/Sao_Paulo) − DIAS_ANTES_POSTAGEM.
+    Retornada como unix ms da meia-noite UTC daquele dia (padrão ClickUp)."""
+    hoje_sp = datetime.now(TZ_SP).date()
+    alvo = hoje_sp - timedelta(days=DIAS_ANTES_POSTAGEM)
+    return int(datetime(alvo.year, alvo.month, alvo.day,
+                        tzinfo=timezone.utc).timestamp() * 1000)
 
 # ---------------------------------------------------------------------------
 # Cliente ClickUp
@@ -314,6 +334,7 @@ def create_reels_teste_copy(cu: ClickUp, orig: dict) -> None:
     # Status no payload de criação: ClickUp aceita o nome em minúsculo.
     # Se 'agendar postagem' não existir na lista, o POST retorna 400 e
     # abortamos sem marcar a original como processada.
+    due_ms = data_postagem_ms()
     new_payload: dict[str, Any] = {
         "name": new_name,
         "status": NEW_TASK_STATUS,
@@ -330,10 +351,18 @@ def create_reels_teste_copy(cu: ClickUp, orig: dict) -> None:
         log.error("FALHA: create_task não retornou ID pra original %s. "
                   "NÃO marcada como processada.", orig_id)
         return
-    log.info("  Cópia criada: %s (%s)", new_id, new_name)
+    due_str = datetime.fromtimestamp(due_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+    log.info("  Cópia criada: %s (%s) — data de postagem: %s",
+             new_id, new_name, due_str)
 
     # --- Copia os 5 custom fields ---
     apply_custom_fields(cu, new_id, orig)
+
+    # --- Preenche a Data de Postagem (hoje − 3 dias) ---
+    try:
+        cu.set_custom_field(new_id, CF_DATA_POSTAGEM, due_ms)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Falha ao setar Data de Postagem em %s: %s", new_id, exc)
 
     # --- Adiciona o comentário fixo ---
     try:
